@@ -40,7 +40,7 @@ print("Training (500 epochs)...")
 history = model.fit(x, y, epochs=500, batch_size=32, verbose=0)
 final_loss = history.history['loss'][-1]
 
-pred = float(model.predict([[1.0]], verbose=0)[0][0])
+pred = float(model.predict(np.array([[1.0]]), verbose=0)[0][0])
 print(f"Final loss:       {final_loss:.6f}")
 print(f"Prediction x=1.0: {pred:.4f}  (sin(1.0) = {np.sin(1.0):.4f})")
 
@@ -69,3 +69,4 @@ print()
 print("Next steps:")
 print(f"  python scripts/signing/sign_model.py {out_path} 1")
 print(f"  xxd -i {out_path} > firmware/stm32/src/sine_model_data.cc")
+
