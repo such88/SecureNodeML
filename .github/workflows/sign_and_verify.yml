@@ -1,0 +1,35 @@
+name: Model sign and verify
+
+on:
+  push:
+    paths:
+      - 'models/**'
+      - 'scripts/signing/**'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python deps
+        run: pip install tensorflow==2.13.0 numpy cryptography
+
+      - name: Train model
+        run: python models/training/anomaly_train.py
+
+      - name: Generate CI keypair (demo — use HSM in production)
+        run: python scripts/signing/keygen.py
+
+      - name: Sign model
+        run: python scripts/signing/sign_model.py models/converted/anomaly_int8.tflite 1
+
+      - name: Verify signature
+        run: python scripts/signing/verify_model.py models/converted/anomaly_int8.tflite
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-model
+          path: |
+            models/converted/anomaly_int8.tflite
+            models/converted/anomaly_int8.tflite.sig

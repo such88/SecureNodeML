@@ -1,0 +1,12 @@
+# Python dependencies for SecureInferNode
+# Install: pip install -r requirements.txt
+
+# ML training + TFLite conversion
+tensorflow==2.13.0
+numpy>=1.24
+
+# ECDSA model signing
+cryptography>=41.0
+
+# SPDM host script (drives STM32 over UART)
+pyserial>=3.5

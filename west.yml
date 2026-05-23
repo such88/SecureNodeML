@@ -1,0 +1,39 @@
+# west.yml — Zephyr workspace manifest for SecureInferNode
+#
+# This file pins the exact Zephyr version and modules used.
+# west update pulls everything listed here.
+#
+# Usage (run once after cloning):
+#   west init -l .                 # init workspace using this manifest
+#   west update                    # clone Zephyr + all modules below
+
+manifest:
+  version: "0.13"
+
+  # ── Zephyr base ────────────────────────────────────────────────────────
+  defaults:
+    remote: zephyr-remote
+
+  remotes:
+    - name: zephyr-remote
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    # Zephyr RTOS — pinned to v3.6.0 (LTS)
+    - name: zephyr
+      remote: zephyr-remote
+      revision: v3.6.0
+      import:
+        # Import Zephyr's own west.yml so its modules (hal_stm32, mbedtls,
+        # cmsis, etc.) are also fetched automatically
+        file: west.yml
+
+    # TFLite Micro — Zephyr integration branch
+    - name: tflite-micro
+      url: https://github.com/tensorflow/tflite-micro
+      revision: main
+      path: tflite-micro
+
+  self:
+    # This repo is the manifest repo itself
+    path: SecureInferNode
