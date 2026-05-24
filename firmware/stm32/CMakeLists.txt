@@ -37,7 +37,7 @@ target_sources(app PRIVATE
 
   # ── Generated file — uncomment after Day 7 ─────────────────────────────
   # Run: xxd -i models/converted/anomaly_int8.tflite > firmware/stm32/src/anomaly_model_data.cc
-  # src/anomaly_model_data.cc
+  src/anomaly_model_data.cc
 )
 
 # ── TFLite Micro library (added as a CMake subdirectory) ───────────────────
