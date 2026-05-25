@@ -31,7 +31,6 @@ static int ver_set_cb(const char *key, size_t len,
     }
     return 0;
 }
-
 static struct settings_handler ver_handler = {
     .name  = "model",
     .h_set = ver_set_cb,
@@ -46,6 +45,11 @@ static void lazy_load(void)
         g_loaded = true;
     }
 }
+
+/* Commented out for now since we haven't implemented OTA yet, so no need to load from NVS.
+   We'll re-enable after implementing OTA and writing version to NVS. */
+/*
+
 
 int version_check_and_update(uint32_t incoming)
 {
@@ -73,4 +77,16 @@ uint32_t version_get_current(void)
 {
     lazy_load();
     return g_current;
+}
+*/
+/* Stub implementations for version checking (NVS disabled) */
+int version_check_and_update(uint32_t incoming)
+{
+    LOG_INF("Version check stub (NVS disabled)");
+    return 0;
+}
+
+uint32_t version_get_current(void)
+{
+    return 0;
 }

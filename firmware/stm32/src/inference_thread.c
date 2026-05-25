@@ -15,7 +15,7 @@
  */
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/timing/timing.h>
+//#include <zephyr/timing/timing.h>
 
 LOG_MODULE_REGISTER(inference, LOG_LEVEL_INF);
 
@@ -84,7 +84,8 @@ void inference_thread_entry(void *a, void *b, void *c)
         float sensor[NUM_FEATURES] = {0.50f, 0.30f, 0.80f, 0.60f};
         float recon[NUM_FEATURES]  = {0.0f};
 
-        timing_t t0 = timing_counter_get();
+        //timing_t t0 = timing_counter_get();
+        uint32_t t0 = k_cycle_get_32();
 
         /*
          * TODO Day 9: run inference
@@ -101,12 +102,14 @@ void inference_thread_entry(void *a, void *b, void *c)
          */
 
         /* TODO inference */
-        timing_t t1 = timing_counter_get();
-        uint64_t lat_us = timing_cycles_to_ns(timing_cycles_get(&t0, &t1)) / 1000ULL;
+        //timing_t t1 = timing_counter_get();
+        //uint64_t lat_us = timing_cycles_to_ns(timing_cycles_get(&t0, &t1)) / 1000ULL;
+        uint32_t elapsed = k_cycle_get_32() - t0;
+        uint32_t lat_us = k_cyc_to_us_near32(elapsed);
 
         float err = mse(sensor, recon, NUM_FEATURES);
 
-        LOG_INF("Lat:%lluus  Err:%.4f  [temp=%.2f vib=%.2f volt=%.2f curr=%.2f]  %s",
+        LOG_INF("Lat:%uus  Err:%.4f  [temp=%.2f vib=%.2f volt=%.2f curr=%.2f]  %s",
                 lat_us, (double)err,
                 (double)sensor[0], (double)sensor[1],
                 (double)sensor[2], (double)sensor[3],

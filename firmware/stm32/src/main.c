@@ -12,7 +12,7 @@
  */
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/timing/timing.h>
+//#include <zephyr/timing/timing.h>
 #include <zephyr/storage/flash_map.h>
 
 #include "model_verify.h"
@@ -46,9 +46,10 @@ int main(void)
     LOG_INF("Board: disco_f407vg  MCU: STM32F407VG  RTOS: Zephyr");
 
     /* ── Step 1: Verify model before doing anything else ─────────────── */
-    timing_init();
-    timing_start();
-    timing_t t0 = timing_counter_get();
+    //timing_init();
+    //timing_start();
+    //timing_t t0 = timing_counter_get();
+    uint32_t t0 = k_cycle_get_32();
 
     /*
      * Model is in flash — access via direct pointer to partition base.
@@ -60,11 +61,21 @@ int main(void)
     const uint8_t *model = (const uint8_t *)
         (DT_REG_ADDR(DT_NODELABEL(flash0)) + 0x60000);  /* sector 7 */
     const uint8_t *sig   = model + MODEL_ACTUAL_LEN;
+    int ret = 0;
 
-    int ret = model_verify(model, MODEL_ACTUAL_LEN, sig, MODEL_SIG_LEN);
+    /* TODO Day 11: re-enable after writing model to flash sector 7, todo
+    ret = model_verify(model, MODEL_ACTUAL_LEN, sig, MODEL_SIG_LEN);
+    if (ret != 0) {
+        LOG_ERR("MODEL VERIFY FAILED (%llu us) — SYSTEM HALTED", verify_us);
+        k_panic();
+    }
+    */
+    LOG_INF("MODEL VERIFY SKIPPED (model not yet in sector 7)");
 
-    uint64_t verify_us = timing_cycles_to_ns(
-        timing_cycles_get(&t0, timing_counter_get())) / 1000ULL;
+    uint32_t t1 = k_cycle_get_32();
+    uint32_t verify_us = k_cyc_to_us_near32(t1 - t0);
+    //uint64_t verify_us = timing_cycles_to_ns(
+    //    timing_cycles_get(&t0, timing_counter_get())) / 1000ULL;
 
     if (ret != 0) {
         LOG_ERR("MODEL VERIFY FAILED (%llu us) — SYSTEM HALTED", verify_us);
@@ -81,16 +92,26 @@ int main(void)
      */
 
     /* ── Step 3: Launch inference thread in unprivileged mode ────────── */
+    /* TODO Day 12: re-enable with K_USER after MPU setup complete
     k_thread_create(&inference_thread_data,
                     inference_stack,
                     K_THREAD_STACK_SIZEOF(inference_stack),
                     inference_thread_entry,
                     NULL, NULL, NULL,
                     K_PRIO_PREEMPT(5),
-                    K_USER,          /* <── MPU-isolated unprivileged */
+                    K_USER,
+                    K_NO_WAIT);
+    */
+    k_thread_create(&inference_thread_data,
+                    inference_stack,
+                    K_THREAD_STACK_SIZEOF(inference_stack),
+                    inference_thread_entry,
+                    NULL, NULL, NULL,
+                    K_PRIO_PREEMPT(5),
+                    0,
                     K_NO_WAIT);
     k_thread_name_set(&inference_thread_data, "inference");
-    LOG_INF("Inference thread started (K_USER)");
+    LOG_INF("Inference thread started");
 
     /* ── Step 4: SPDM responder + OTA listener ────────────────────────── */
     /* TODO Days 15–22: add spdm_responder_run() and ota_receiver_run() */
