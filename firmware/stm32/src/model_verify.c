@@ -13,9 +13,10 @@
 #include <mbedtls/sha256.h>
 #include <mbedtls/ecp.h>
 #include <mbedtls/bignum.h>
-#include <mbedtls/error.h>
+//#include <mbedtls/error.h>
 
 LOG_MODULE_REGISTER(model_verify, LOG_LEVEL_INF);
+
 
 /*
  * Hardcoded public key — embedded in firmware at build time.
@@ -44,15 +45,16 @@ int model_verify(const uint8_t *model, size_t model_len,
     int ret;
     uint8_t hash[32];
     mbedtls_ecdsa_context ctx;
-    char errbuf[128];
+    //char errbuf[128];
 
     mbedtls_ecdsa_init(&ctx);
 
     /* 1. SHA-256 over the entire model binary */
     ret = mbedtls_sha256(model, model_len, hash, 0 /* is224=0 → SHA-256 */);
     if (ret != 0) {
-        mbedtls_strerror(ret, errbuf, sizeof(errbuf));
-        LOG_ERR("SHA-256 failed: %s", errbuf);
+        //mbedtls_strerror(ret, errbuf, sizeof(errbuf));
+        //LOG_ERR("SHA-256 failed: %s", errbuf);
+        LOG_ERR("mbedTLS error: -0x%04X", -ret);
         goto cleanup;
     }
 
@@ -83,8 +85,8 @@ int model_verify(const uint8_t *model, size_t model_len,
     if (ret == 0) {
         LOG_INF("Signature VALID");
     } else {
-        mbedtls_strerror(ret, errbuf, sizeof(errbuf));
-        LOG_ERR("Signature INVALID: %s", errbuf);
+        //mbedtls_strerror(ret, errbuf, sizeof(errbuf));
+        LOG_ERR("Signature INVALID: -0x%04X", -ret);
     }
 
 cleanup:

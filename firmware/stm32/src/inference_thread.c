@@ -30,7 +30,6 @@ LOG_MODULE_REGISTER(inference, LOG_LEVEL_INF);
  */
 #define TENSOR_ARENA_SIZE   (20U * 1024U)
 static uint8_t tensor_arena[TENSOR_ARENA_SIZE];
-
 /*
  * TODO Day 9: uncomment after running:
  *   xxd -i models/converted/anomaly_int8.tflite > firmware/stm32/src/anomaly_model_data.cc
@@ -55,6 +54,7 @@ void inference_thread_entry(void *a, void *b, void *c)
 
     LOG_INF("Inference thread running (K_USER, MPU-isolated)");
 
+    (void)tensor_arena;  // Avoid "defined but not used" warning until TFLite code is uncommented
     /*
      * MPU fault test — Day 12:
      * Uncomment to prove the inference thread CANNOT write the model.
@@ -100,8 +100,9 @@ void inference_thread_entry(void *a, void *b, void *c)
          * memcpy(recon, out, NUM_FEATURES * sizeof(float));
          */
 
-        uint64_t lat_us = timing_cycles_to_ns(
-            timing_cycles_get(&t0, timing_counter_get())) / 1000ULL;
+        /* TODO inference */
+        timing_t t1 = timing_counter_get();
+        uint64_t lat_us = timing_cycles_to_ns(timing_cycles_get(&t0, &t1)) / 1000ULL;
 
         float err = mse(sensor, recon, NUM_FEATURES);
 

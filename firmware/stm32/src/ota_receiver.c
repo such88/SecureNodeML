@@ -15,7 +15,7 @@
  */
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/crc.h>
+#include <zephyr/sys/crc.h>
 #include <zephyr/storage/flash_map.h>
 #include <errno.h>
 #include <string.h>
