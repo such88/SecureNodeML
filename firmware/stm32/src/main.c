@@ -31,8 +31,10 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 #define MODEL_SIG_OFFSET    (MODEL_MAX_LEN)
 #define MODEL_SIG_LEN       72U           /* max DER ECDSA P-256 sig */
 
-/* TODO Day 7: replace MODEL_MAX_LEN with actual length from model header */
-#define MODEL_ACTUAL_LEN    MODEL_MAX_LEN
+#define MODEL_FLASH_ADDR    0x08060000U
+#define MODEL_ACTUAL_LEN    4104U
+#define MODEL_SIG_ADDR      0x08061008U
+#define MODEL_SIG_LEN       72U
 
 /* Inference thread — declared in inference_thread.c */
 extern void inference_thread_entry(void *, void *, void *);
@@ -63,14 +65,14 @@ int main(void)
     const uint8_t *sig   = model + MODEL_ACTUAL_LEN;
     int ret = 0;
 
-    /* TODO Day 11: re-enable after writing model to flash sector 7, todo
+    /* TODO Day 11: re-enable after writing model to flash sector 7, todo */
     ret = model_verify(model, MODEL_ACTUAL_LEN, sig, MODEL_SIG_LEN);
+
     if (ret != 0) {
-        LOG_ERR("MODEL VERIFY FAILED (%llu us) — SYSTEM HALTED", verify_us);
+        LOG_ERR("MODEL VERIFY FAILED — SYSTEM HALTED");
         k_panic();
     }
-    */
-    LOG_INF("MODEL VERIFY SKIPPED (model not yet in sector 7)");
+    LOG_INF("MODEL VERIFIED OK");
 
     uint32_t t1 = k_cycle_get_32();
     uint32_t verify_us = k_cyc_to_us_near32(t1 - t0);
