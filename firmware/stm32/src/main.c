@@ -94,7 +94,6 @@ int main(void)
      */
 
     /* ── Step 3: Launch inference thread in unprivileged mode ────────── */
-    /* TODO Day 12: re-enable with K_USER after MPU setup complete
     k_thread_create(&inference_thread_data,
                     inference_stack,
                     K_THREAD_STACK_SIZEOF(inference_stack),
@@ -103,7 +102,9 @@ int main(void)
                     K_PRIO_PREEMPT(5),
                     K_USER,
                     K_NO_WAIT);
-    */
+
+    /* For now create inference thread in privileged mode until we set up MPU and K_USER */
+    /* TODO Day 12: re-enable with K_USER after MPU setup complete
     k_thread_create(&inference_thread_data,
                     inference_stack,
                     K_THREAD_STACK_SIZEOF(inference_stack),
@@ -111,7 +112,8 @@ int main(void)
                     NULL, NULL, NULL,
                     K_PRIO_PREEMPT(5),
                     0,
-                    K_NO_WAIT);
+                    K_NO_WAIT);*/
+
     k_thread_name_set(&inference_thread_data, "inference");
     LOG_INF("Inference thread started");
 

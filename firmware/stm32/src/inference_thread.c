@@ -53,17 +53,7 @@ void inference_thread_entry(void *a, void *b, void *c)
     ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
 
     LOG_INF("Inference thread running (K_USER, MPU-isolated)");
-
-    (void)tensor_arena;  // Avoid "defined but not used" warning until TFLite code is uncommented
-    /*
-     * MPU fault test — Day 12:
-     * Uncomment to prove the inference thread CANNOT write the model.
-     * Should trigger "***** MPU FAULT *****" in UART log.
-     *
-     * extern const uint8_t anomaly_int8_tflite[];
-     * *((uint8_t *)anomaly_int8_tflite) = 0xFF;  // MUST fault here
-     */
-
+    
     /*
      * TODO Day 9: initialise TFLite Micro interpreter
      *
