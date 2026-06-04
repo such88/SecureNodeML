@@ -21,7 +21,8 @@ LOG_MODULE_REGISTER(spdm, LOG_LEVEL_DBG);
 
 /* Model location in flash — same address as used in main.c */
 #define MODEL_BASE_ADDR  0x08060000U
-#define MODEL_LEN        (120U * 1024U) /* TODO: read from model header */
+//#define MODEL_LEN        (120U * 1024U) /* TODO: read from model header */
+#define MODEL_LEN        4104U
 
 /* Supported SPDM versions: 1.0 and 1.2 */
 static const uint8_t VERSION_ENTRIES[] = { 0x10, 0x00, 0x12, 0x00 };

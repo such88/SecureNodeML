@@ -86,6 +86,19 @@ int main(void)
     }
     LOG_INF("MODEL VERIFIED OK (%llu us)", verify_us);
 
+    /* ── SPDM measurement test (Day 15) ─────────────────── */
+    extern int spdm_process_request(const uint8_t *req, size_t req_len,
+                                     uint8_t *out_buf, size_t out_max);
+    uint8_t spdm_req[4] = {0x12, 0xE0, 0x01, 0xFF};  /* GET_MEASUREMENTS */
+    uint8_t spdm_resp[64];
+    int n = spdm_process_request(spdm_req, sizeof(spdm_req),
+                                  spdm_resp, sizeof(spdm_resp));
+    if (n > 0) {
+        LOG_INF("SPDM response: %d bytes", n);
+        LOG_HEXDUMP_INF(spdm_resp, n, "SPDM:");
+    } else {
+        LOG_ERR("SPDM failed");
+    }
     /* ── Step 2: Anti-rollback ────────────────────────────────────────── */
     /*
      * TODO Day 17: read version from model header at model[0..3]
