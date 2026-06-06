@@ -1,92 +1,37 @@
-/*
- * boards/disco_f407vg.overlay
- *
- * Hardware-specific overrides for STM32F407VG Discovery.
- * This file extends the upstream Zephyr board definition.
- *
- * What it does:
- *   - Reserves flash partition for model storage at sector 7
- *   - Reserves NVS storage for anti-rollback version counter
- *   - Configures USART1 for SPDM + OTA communication with ESP32
- *
- * Reference: STM32F407VG Reference Manual (RM0090) section 3.4
- */
-
 / {
     chosen {
-        zephyr,console    = &usart2;   /* default Zephyr log output (PA2/PA3) */
+        zephyr,console    = &usart2;
         zephyr,shell-uart = &usart2;
         zephyr,sram       = &sram0;
         zephyr,flash      = &flash0;
-        zephyr,flash-controller = &flash;
+        zephyr,ccm        = &ccm0;
     };
 };
 
-/* ── Flash partitions ─────────────────────────────────────────────────────
- * STM32F407VG flash layout:
- *   Sector 0 (0x08000000, 16KB)  }
- *   Sector 1 (0x08004000, 16KB)  } bootloader slot (reserved)
- *   Sector 2 (0x08008000, 16KB)  }
- *   Sector 3 (0x0800C000, 16KB)  }
- *   Sector 4 (0x08010000, 64KB)  } application firmware
- *   Sector 5 (0x08020000, 128KB) }
- *   Sector 6 (0x08040000, 128KB) }
- *   Sector 7 (0x08060000, 128KB)   <-- model storage (anomaly_int8.tflite)
- *   Sector 8 (0x08080000, 128KB) }
- *   Sector 9 (0x080A0000, 128KB) }  OTA staging (incoming model before verify)
- *   Sector 10(0x080C0000, 128KB) }
- *   Sector 11(0x080E0000, 128KB)   <-- NVS (anti-rollback version)
- */
 &flash0 {
     partitions {
         compatible = "fixed-partitions";
         #address-cells = <1>;
         #size-cells    = <1>;
 
-        /* Application firmware: sectors 2-6 (308KB) */
         slot0_partition: partition@8000 {
             label = "image-0";
             reg   = <0x00008000 0x00058000>;
         };
 
-        /* Model storage: sector 7 (128KB) — anomaly_int8.tflite lives here */
         model_partition: partition@60000 {
             label = "model-storage";
             reg   = <0x00060000 0x00020000>;
         };
 
-        /* OTA staging: sectors 8-10 (384KB) — incoming model before verify */
         ota_staging: partition@80000 {
             label = "ota-staging";
-            reg   = <0x00080000 0x00060000>;
+            reg   = <0x00080000 0x00040000>;
         };
 
-        /* NVS storage: sector 11 (128KB) — anti-rollback version counter */
-        storage_partition: partition@E0000 {
-            label   = "storage";
-            reg     = <0x000E0000 0x00020000>;
+        storage_partition: partition@C0000 {
+            label = "storage";
+            reg   = <0x000C0000 0x00040000>;
         };
     };
-};
-
-/* ── USART1: ESP32 ↔ STM32 communication (SPDM + OTA) ───────────────────
- * PA9  = USART1 TX  (connects to ESP32 RX = GPIO16)
- * PA10 = USART1 RX  (connects to ESP32 TX = GPIO17)
- */
-&usart1 {
-    pinctrl-0    = <&usart1_tx_pa9 &usart1_rx_pa10>;
-    pinctrl-names = "default";
-    current-speed = <115200>;
-    status = "okay";
-};
-
-/* ── USART2: Debug console (default Zephyr LOG output) ───────────────────
- * PA2 = USART2 TX (goes to ST-LINK virtual COM port)
- * PA3 = USART2 RX
- */
-&usart2 {
-    pinctrl-0    = <&usart2_tx_pa2 &usart2_rx_pa3>;
-    pinctrl-names = "default";
-    current-speed = <115200>;
-    status = "okay";
 };

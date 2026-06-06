@@ -86,6 +86,18 @@ int main(void)
     }
     LOG_INF("MODEL VERIFIED OK (%llu us)", verify_us);
 
+    /* ── Step 2: Anti-rollback version check ───────────────────── */
+    extern int version_check_and_update(uint32_t incoming);
+    extern uint32_t version_get_current(void);
+    
+    uint32_t model_version = 1;  /* hardcoded for now — Day 21: read from OTA frame */
+    int vret = version_check_and_update(model_version);
+    if (vret != 0) {
+        LOG_ERR("VERSION CHECK FAILED — rollback detected");
+        k_panic();
+    }
+    LOG_INF("Version accepted: v%u", version_get_current());
+
     /* ── SPDM measurement test (Day 15) ─────────────────── */
     extern int spdm_process_request(const uint8_t *req, size_t req_len,
                                      uint8_t *out_buf, size_t out_max);
