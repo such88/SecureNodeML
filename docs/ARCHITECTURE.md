@@ -4,8 +4,8 @@
 > Attested TinyML inference on STM32F407 + ESP32 with SPDM 1.2 attestation
 > and ECDSA P-256 model signing.
 
-> **Status:** In progress — fill each section as you build.
-> Last updated: <!-- YYYY-MM-DD -->
+> **Status:** Core security pipeline verified on real hardware (Days 1-22). Cross-board OTA UART link integration in progress — see THREAT_MODEL.md §6.
+> Last updated: 2026-06-13
 
 ---
 
@@ -44,7 +44,7 @@ This system solves three problems:
 │  1. Fetch model(.tflite) + signature(.sig)                   │
 │  2. ECDSA P-256 verify (mbedTLS) — discard if invalid        │
 │  3. UART Frame: [MAGIC][VERSION][LENGTH][PAYLOAD][CRC32]     │
-│  4. Send via UART2 TX→GPIO17                                 │
+│  4. Send via UART2 (ESP32 GPIO2/GPIO4 ↔ STM32 PB7/PB6)                                 │
 │  5. SPDM GET_MEASUREMENTS (requester)                        │
 └──────────────────┬───────────────────────────────────────────┘
                    │ UART 115200 8N1 binary framed
@@ -64,7 +64,7 @@ This system solves three problems:
 │  RUNTIME — SPDM responder (privileged):                      │
 │  6. GET_MEASUREMENTS → SHA-384(model) → signed response      │
 │                                                              │
-│  OTA receive (privileged, USART1 interrupt):                 │
+│  OTA receive (privileged, USART1 polling, PB6/PB7):                 │
 │  7. CRC32 → ECDSA re-verify → version check → apply          │
 └──────────────────────────────────────────────────────────────┘
 ```
