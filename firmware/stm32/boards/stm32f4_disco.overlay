@@ -35,3 +35,20 @@
         };
     };
 };
+
+&pinctrl {
+    /omit-if-no-ref/
+    usart1_rx_pb7_pullup: usart1_rx_pb7_pullup {
+        pinmux = <STM32_PINMUX('B', 7, AF7)>;
+        bias-pull-up;
+    };
+};
+
+&usart1 {
+    pinctrl-0 = <&usart1_tx_pb6 &usart1_rx_pb7>;
+    pinctrl-names = "default";
+    current-speed = <115200>;
+    status = "okay";
+};
+
+

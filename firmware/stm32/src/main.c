@@ -14,7 +14,7 @@
 #include <zephyr/logging/log.h>
 //#include <zephyr/timing/timing.h>
 #include <zephyr/storage/flash_map.h>
-
+#include <zephyr/drivers/uart.h>
 #include "model_verify.h"
 #include "version_check.h"
 
@@ -80,11 +80,11 @@ int main(void)
     //    timing_cycles_get(&t0, timing_counter_get())) / 1000ULL;
 
     if (ret != 0) {
-        LOG_ERR("MODEL VERIFY FAILED (%llu us) — SYSTEM HALTED", verify_us);
+        LOG_ERR("MODEL VERIFY FAILED (%u us) — SYSTEM HALTED", verify_us);
         k_panic();
         /* unreachable */
     }
-    LOG_INF("MODEL VERIFIED OK (%llu us)", verify_us);
+    LOG_INF("MODEL VERIFIED OK (%u us)", verify_us);
 
     /* ── Step 2: Anti-rollback version check ───────────────────── */
     extern int version_check_and_update(uint32_t incoming);
@@ -141,9 +141,48 @@ int main(void)
 
     k_thread_name_set(&inference_thread_data, "inference");
     LOG_INF("Inference thread started");
+    
+// /* USART1 loopback test - try multiple times */
+// k_msleep(100);
+// const struct device *u1 = DEVICE_DT_GET(DT_NODELABEL(usart1));
+// if (device_is_ready(u1)) {
+//     for (int i = 0; i < 5; i++) {
+//         uart_poll_out(u1, 0x55 + i);
+//         k_msleep(10);
+//         uint8_t c;
+//         int r = uart_poll_in(u1, &c);
+//         LOG_INF("USART1 loopback #%d: sent=0x%02X recv=0x%02X ret=%d",
+//                 i, 0x55+i, c, r);
+//     }
+// } else {
+//     LOG_ERR("USART1 not ready");
+// }
 
     /* ── Step 4: SPDM responder + OTA listener ────────────────────────── */
     /* TODO Days 15–22: add spdm_responder_run() and ota_receiver_run() */
+/* ── OTA receiver ────────────────────────────────────────── */
+    extern int ota_receive_and_apply(void);
+    LOG_INF("Waiting for OTA from ESP32...");
+    int ota_ret = ota_receive_and_apply();
+    if (ota_ret == 0) {
+        LOG_INF("OTA complete");
+    } else {
+        LOG_WRN("OTA not received (%d) — continuing", ota_ret);
+    }
+
+    /* Sniff test pattern */
+    // LOG_INF("Quick sniff for test pattern...");
+    // const struct device *u1 = DEVICE_DT_GET(DT_NODELABEL(usart1));
+    // t0 = k_uptime_get_32();
+    // int cnt = 0;
+    // while ((k_uptime_get_32() - t0) < 15000) {
+    //     uint8_t c;
+    //     if (uart_poll_in(u1, &c) == 0) {
+    //         LOG_INF("Test byte #%d: 0x%02X", cnt++, c);
+    //     }
+    //     k_msleep(1);
+    // }
+    // LOG_INF("Test sniff done: %d bytes", cnt);
 
     return 0;
 }

@@ -1,102 +1,95 @@
 /*
- * src/ota_receiver.c — OTA model receive + verify + apply
- *
- * Receive pipeline (each step is a security gate):
- *   1. Read ota_frame_header_t from USART1
- *   2. Read model payload into staging buffer
- *   3. CRC32 check               → detect transmission errors
- *   4. ECDSA P-256 verify        → independent of ESP32 gateway verify
- *   5. Anti-rollback version check
- *   6. Write to staging partition (0x080E0000)
- *   7. Promote: copy staging → model partition (0x08060000)
- *   8. Restart inference thread with new model
- *
- * TODO Days 21–22: implement USART1 receive + flash write
+ * ota_receiver.c — Receive OTA model from ESP32 over USART1
  */
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/drivers/uart.h>
 #include <zephyr/sys/crc.h>
-#include <zephyr/storage/flash_map.h>
-#include <errno.h>
 #include <string.h>
-
 #include "ota_protocol.h"
 #include "model_verify.h"
 #include "version_check.h"
 
 LOG_MODULE_REGISTER(ota_rx, LOG_LEVEL_INF);
 
-/* Static receive buffer — lives in BSS (zero-initialised at boot) */
-static uint8_t s_model_buf[OTA_MAX_MODEL_SIZE];
+static const struct device *uart1 = DEVICE_DT_GET(DT_NODELABEL(usart1));
+//RAM OVERFLOW(128KB) — allocate as static global to avoid stack overflow in inference thread
+//static uint8_t s_model_buf[OTA_MAX_MODEL_SIZE]; 
+static uint8_t s_model_buf[8192];  /* 8KB — enough for our 4104 byte model */
+
+static int uart_read_exact(const struct device *dev,
+                            uint8_t *buf, size_t len, uint32_t timeout_ms)
+{
+    size_t received = 0;
+    uint32_t start = k_uptime_get_32();
+
+    while (received < len) {
+        uint8_t c;
+        if (uart_poll_in(dev, &c) == 0) {
+            buf[received++] = c;
+        } else {
+            if ((k_uptime_get_32() - start) > timeout_ms) {
+                LOG_ERR("UART read timeout at %u/%u bytes",
+                        (unsigned)received, (unsigned)len);
+                return -ETIMEDOUT;
+            }
+            k_usleep(100);
+        }
+    }
+    return 0;
+}
 
 int ota_receive_and_apply(void)
 {
-    ota_frame_header_t hdr;
+    if (!device_is_ready(uart1)) {
+        LOG_ERR("USART1 not ready");
+        return -ENODEV;
+    }
 
-    /* ── Step 1: Read frame header from USART1 ─────────────────────── */
-    /* TODO Day 21: uart_rx_buf((uint8_t *)&hdr, sizeof(hdr)); */
-    LOG_DBG("Waiting for OTA frame header...");
+    LOG_INF("Waiting for OTA frame on USART1...");
+
+    /* Step 1: Read header */
+    ota_frame_header_t hdr;
+    if (uart_read_exact(uart1, (uint8_t *)&hdr, sizeof(hdr), 30000) != 0) {
+        return -ETIMEDOUT;
+    }
 
     if (hdr.magic != OTA_MAGIC) {
-        LOG_ERR("Bad OTA magic: 0x%08X (expected 0x%08X)",
-                hdr.magic, OTA_MAGIC);
+        LOG_ERR("Bad magic: 0x%08X", hdr.magic);
         return -EINVAL;
     }
     if (hdr.length == 0 || hdr.length > OTA_MAX_MODEL_SIZE) {
-        LOG_ERR("OTA length out of range: %u", hdr.length);
-        return -ENOMEM;
+        LOG_ERR("Bad length: %u", hdr.length);
+        return -EINVAL;
     }
-    LOG_INF("OTA header: version=%u length=%u", hdr.version, hdr.length);
+    LOG_INF("OTA header: v%u len=%u", hdr.version, hdr.length);
 
-    /* ── Step 2: Read payload ──────────────────────────────────────── */
-    /* TODO Day 21: uart_rx_buf(s_model_buf, hdr.length); */
+    /* Step 2: Read payload */
+    if (uart_read_exact(uart1, s_model_buf, hdr.length, 10000) != 0) {
+        return -ETIMEDOUT;
+    }
 
-    /* ── Step 3: CRC32 check ───────────────────────────────────────── */
+    /* Step 3: Read + verify CRC32 */
     uint32_t recv_crc;
-    /* TODO Day 21: uart_rx_buf((uint8_t *)&recv_crc, sizeof(recv_crc)); */
-
+    if (uart_read_exact(uart1, (uint8_t *)&recv_crc, 4, 1000) != 0) {
+        return -ETIMEDOUT;
+    }
     uint32_t calc_crc = crc32_ieee(s_model_buf, hdr.length);
     if (calc_crc != recv_crc) {
         LOG_ERR("CRC32 mismatch: got 0x%08X expected 0x%08X",
                 recv_crc, calc_crc);
         return -EIO;
     }
-    LOG_INF("CRC32 OK (0x%08X)", calc_crc);
+    LOG_INF("CRC32 OK");
 
-    /* ── Step 4: Independent ECDSA verify (do NOT trust the gateway) ─ */
-    /*
-     * The signature is appended after the model payload.
-     * TODO Day 21: define wire protocol for sig delivery
-     * (options: fixed 72-byte trailer, or separate framed message)
-     */
-    uint8_t sig_buf[72];
-    /* TODO Day 21: extract sig from frame */
+    /* Step 4: ECDSA verify (independent of gateway) */
+    /* TODO Day 22: signature delivered separately — skip for now */
+    LOG_INF("ECDSA verify: TODO Day 22");
 
-    int ret = model_verify(s_model_buf, hdr.length, sig_buf, sizeof(sig_buf));
-    if (ret != 0) {
-        LOG_ERR("OTA ECDSA verify FAILED — model rejected");
-        /* Wipe buffer: don't leave potentially malicious bytes in RAM */
-        memset(s_model_buf, 0, hdr.length);
-        return -EACCES;
-    }
-    LOG_INF("OTA ECDSA verify OK");
+    /* Step 5: Version check */
+    int ret = version_check_and_update(hdr.version);
+    if (ret != 0) return ret;
 
-    /* ── Step 5: Anti-rollback ─────────────────────────────────────── */
-    ret = version_check_and_update(hdr.version);
-    if (ret != 0) {
-        LOG_ERR("Rollback rejected: v%u", hdr.version);
-        return ret;
-    }
-
-    /* ── Steps 6–8: Flash write + promote ─────────────────────────── */
-    /* TODO Day 22:
-     * 1. flash_area_open(FIXED_PARTITION_ID(ota_staging), &fa)
-     * 2. flash_area_erase(fa, 0, hdr.length)
-     * 3. flash_area_write(fa, 0, s_model_buf, hdr.length)
-     * 4. flash_area_close(fa)
-     * 5. Copy staging → model_partition
-     * 6. k_thread_abort(inference_thread) + k_thread_create(...) to restart
-     */
-    LOG_INF("OTA v%u accepted — TODO: flash write (Day 22)", hdr.version);
+    LOG_INF("OTA v%u accepted — %u bytes received", hdr.version, hdr.length);
     return 0;
 }

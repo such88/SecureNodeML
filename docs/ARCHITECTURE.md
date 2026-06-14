@@ -41,7 +41,7 @@ This system solves three problems:
 │ ESP32 — UNTRUSTED PERIMETER                                  │
 │ (WiFi attack surface stops here)                             │
 │                                                              │
-│  1. Fetch Fetch model(.tflite) + signature(.sig)             │
+│  1. Fetch model(.tflite) + signature(.sig)                   │
 │  2. ECDSA P-256 verify (mbedTLS) — discard if invalid        │
 │  3. UART Frame: [MAGIC][VERSION][LENGTH][PAYLOAD][CRC32]     │
 │  4. Send via UART2 TX→GPIO17                                 │
