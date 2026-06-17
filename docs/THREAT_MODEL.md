@@ -30,7 +30,7 @@
 | # | Threat | STRIDE | Vector | Mitigation | Code Reference | Status |
 |---|---|---|---|---|---|---|
 | T1 | Replace model in flash | Tampering | JTAG/SWD reflash | ECDSA verify at boot, k_panic() on fail | `src/model_verify.c` | Verified on hardware — "Signature VALID"; 1-byte tamper triggers kernel panic |
-| T2 | Poisoned OTA model | Tampering | MITM on HTTP | Gateway verify + device verify | `esp32/main/gateway_verify.c`, `src/ota_receiver.c` | Gateway ECDSA verify confirmed on hardware. Device-side independent verify implemented; cross-board UART delivery integration in progress |
+| T2 | Poisoned OTA model | Tampering | MITM on HTTP | Gateway verify + device verify | `esp32/main/gateway_verify.c`, `src/ota_receiver.c` | Fully verified — Gateway ECDSA verify confirmed on hardware. Full end-to-end OTA delivery verified — 4104 bytes in 408ms, CRC32 OK, anti-rollback enforced |
 | T3 | Old-version rollback | Tampering | Malicious server | Anti-rollback, reject if <= stored | `src/version_check.c` | Verified on hardware — "Version accepted: now v1" |
 | T4 | Spoofed SPDM response | Spoofing | UART MITM | Signed measurement response | `src/spdm_responder.c` | GET_MEASUREMENTS verified (SHA-384 matches signed artifact exactly). Response signing scheduled for v2 |
 | T5 | TFLite escape to kernel | EoP | Crafted input | K_USER MPU isolation | `src/inference_thread.c` | K_USER thread running; full memory-domain partitioning scheduled for v2 |
