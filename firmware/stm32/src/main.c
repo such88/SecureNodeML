@@ -86,6 +86,11 @@ int main(void)
     }
     LOG_INF("MODEL VERIFIED OK (%u us)", verify_us);
 
+    /* Enable USART1 IRQ early so ring buffer captures all OTA bytes */
+    extern const struct device *uart1_dev;
+    extern void uart_ota_irq_enable(void);
+    uart_ota_irq_enable();
+    
     /* ── Step 2: Anti-rollback version check ───────────────────── */
     extern int version_check_and_update(uint32_t incoming);
     extern uint32_t version_get_current(void);
@@ -127,37 +132,9 @@ int main(void)
                     K_PRIO_PREEMPT(5),
                     K_USER,
                     K_NO_WAIT);
-
-    /* For now create inference thread in privileged mode until we set up MPU and K_USER */
-    /* TODO Day 12: re-enable with K_USER after MPU setup complete
-    k_thread_create(&inference_thread_data,
-                    inference_stack,
-                    K_THREAD_STACK_SIZEOF(inference_stack),
-                    inference_thread_entry,
-                    NULL, NULL, NULL,
-                    K_PRIO_PREEMPT(5),
-                    0,
-                    K_NO_WAIT);*/
-
     k_thread_name_set(&inference_thread_data, "inference");
     LOG_INF("Inference thread started");
     
-// /* USART1 loopback test - try multiple times */
-// k_msleep(100);
-// const struct device *u1 = DEVICE_DT_GET(DT_NODELABEL(usart1));
-// if (device_is_ready(u1)) {
-//     for (int i = 0; i < 5; i++) {
-//         uart_poll_out(u1, 0x55 + i);
-//         k_msleep(10);
-//         uint8_t c;
-//         int r = uart_poll_in(u1, &c);
-//         LOG_INF("USART1 loopback #%d: sent=0x%02X recv=0x%02X ret=%d",
-//                 i, 0x55+i, c, r);
-//     }
-// } else {
-//     LOG_ERR("USART1 not ready");
-// }
-
     /* ── Step 4: SPDM responder + OTA listener ────────────────────────── */
     /* TODO Days 15–22: add spdm_responder_run() and ota_receiver_run() */
 /* ── OTA receiver ────────────────────────────────────────── */
@@ -170,19 +147,39 @@ int main(void)
         LOG_WRN("OTA not received (%d) — continuing", ota_ret);
     }
 
-    /* Sniff test pattern */
-    // LOG_INF("Quick sniff for test pattern...");
+    /* Sniff test pattern as receiver */
     // const struct device *u1 = DEVICE_DT_GET(DT_NODELABEL(usart1));
-    // t0 = k_uptime_get_32();
-    // int cnt = 0;
-    // while ((k_uptime_get_32() - t0) < 15000) {
-    //     uint8_t c;
-    //     if (uart_poll_in(u1, &c) == 0) {
-    //         LOG_INF("Test byte #%d: 0x%02X", cnt++, c);
+    // if (device_is_ready(u1)) {
+    //     LOG_INF("USART1 RX test: listening for 15 seconds...");
+    //     uint32_t start = k_uptime_get_32();
+    //     int total = 0;
+    //     while ((k_uptime_get_32() - start) < 15000) {
+    //         uint8_t c;
+    //         if (uart_poll_in(u1, &c) == 0) {
+    //             LOG_INF("RX byte #%d: 0x%02X", total++, c);
+    //         }
+    //         k_msleep(5);
     //     }
-    //     k_msleep(1);
+    //     LOG_INF("USART1 RX test done. Total bytes: %d", total);
+    // } else {
+    //     LOG_ERR("USART1 not ready");
+    // }  
+
+   /* TEMP TEST: send a counter byte on USART1 every 200ms */
+    // const struct device *u1 = DEVICE_DT_GET(DT_NODELABEL(usart1));
+    // if (device_is_ready(u1)) {
+    //     LOG_INF("USART1 TX test: sending counter bytes...");
+    //     uint8_t counter = 0;
+    //     for (int i = 0; i < 50; i++) {
+    //         uart_poll_out(u1, counter);
+    //         LOG_INF("Sent: 0x%02X", counter);
+    //         counter++;
+    //         k_msleep(200);
+    //     }
+    //     LOG_INF("USART1 TX test done");
+    // } else {
+    //     LOG_ERR("USART1 not ready");
     // }
-    // LOG_INF("Test sniff done: %d bytes", cnt);
 
     return 0;
 }

@@ -10,6 +10,7 @@
 #include "nvs_flash.h"
 #include "driver/uart.h"
 #include "esp_rom_crc.h"
+#include "driver/gpio.h"
 
 #include "gateway_verify.h"
 #include "ota_protocol.h"
@@ -20,7 +21,7 @@ static const char *TAG = "gateway";
 #define WIFI_PASS       "tenida007"
 #define WIFI_MAX_RETRY  5
 
-#define OTA_SERVER      "http://192.168.0.8:8080"
+#define OTA_SERVER      "http://192.168.0.6:8080"
 #define MODEL_URL       OTA_SERVER "/anomaly_int8.tflite"
 #define SIG_URL         OTA_SERVER "/anomaly_int8.tflite.sig"
 #define MODEL_VERSION   2U   /* increment when retraining */
@@ -112,23 +113,27 @@ static void uart_init(void)
     ESP_LOGI(TAG, "UART2 ready (TX=GPIO2 RX=GPIO4)");
 }
 
-static void send_model_to_stm32(const uint8_t *model, size_t len,
-                                  uint32_t version)
+static void send_model_to_stm32(const uint8_t *model, size_t len, uint32_t version)
 {
+    uint8_t preamble[4] = {0x55, 0x55, 0x55, 0xAA};  /* 3 training + 1 start */
+    uart_write_bytes(UART_NUM_2, (const char *)preamble, 4);
+    vTaskDelay(pdMS_TO_TICKS(50));
+
     ota_frame_header_t hdr = {
         .magic   = OTA_MAGIC,
         .version = version,
         .length  = (uint32_t)len,
     };
+        
     uint32_t crc = esp_rom_crc32_le(0, model, len);
-
-    uart_write_bytes(UART_NUM_2, (const char *)&hdr,   sizeof(hdr));
-    uart_write_bytes(UART_NUM_2, (const char *)model,  len);
-    uart_write_bytes(UART_NUM_2, (const char *)&crc,   sizeof(crc));
+    uart_write_bytes(UART_NUM_2, (const char *)&hdr,  sizeof(hdr));
+    uart_write_bytes(UART_NUM_2, (const char *)model, len);
+    uart_write_bytes(UART_NUM_2, (const char *)&crc,  sizeof(crc));
     ESP_LOGI(TAG, "OTA frame sent: v%"PRIu32" len=%u crc=0x%08"PRIx32,
-            version, (unsigned)len, crc);
+             version, (unsigned)len, crc);
 }
 
+#if 1
 void app_main(void)
 {
     ESP_LOGI(TAG, "=== SecureInferNode ESP32 Gateway ===");
@@ -167,3 +172,64 @@ void app_main(void)
     /* TODO Day 22: SPDM attestation */
     ESP_LOGI(TAG, "TODO Day 22: spdm_get_measurements()");
 }
+#endif
+
+#if 0
+/* UART2 RX test */
+void app_main(void)
+{
+    ESP_LOGI(TAG, "=== UART2 RX test ===");
+
+    uart_config_t cfg = {
+        .baud_rate  = 115200,
+        .data_bits  = UART_DATA_8_BITS,
+        .parity     = UART_PARITY_DISABLE,
+        .stop_bits  = UART_STOP_BITS_1,
+        .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
+    };
+    uart_param_config(UART_NUM_2, &cfg);
+    uart_set_pin(UART_NUM_2, 2, 4, -1, -1);  /* TX=GPIO2 RX=GPIO4 */
+    uart_driver_install(UART_NUM_2, 1024, 1024, 0, NULL, 0);
+    ESP_LOGI(TAG, "UART2 ready (TX=GPIO2 RX=GPIO4) - listening...");
+
+    uint8_t buf[64];
+    int total = 0;
+    uint32_t start = xTaskGetTickCount();
+
+    while ((xTaskGetTickCount() - start) < pdMS_TO_TICKS(15000)) {
+        int len = uart_read_bytes(UART_NUM_2, buf, sizeof(buf), pdMS_TO_TICKS(100));
+        for (int i = 0; i < len; i++) {
+            ESP_LOGI(TAG, "RX byte #%d: 0x%02X", total++, buf[i]);
+        }
+    }
+    ESP_LOGI(TAG, "Test done. Total bytes received: %d", total);
+}
+
+#endif
+
+#if 0
+/* UART2 TX test */
+void app_main(void)
+{
+    ESP_LOGI(TAG, "=== UART2 TX test ===");
+
+    uart_config_t cfg = {
+        .baud_rate  = 115200,
+        .data_bits  = UART_DATA_8_BITS,
+        .parity     = UART_PARITY_DISABLE,
+        .stop_bits  = UART_STOP_BITS_1,
+        .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
+    };
+    uart_param_config(UART_NUM_2, &cfg);
+    uart_set_pin(UART_NUM_2, 2, 4, -1, -1);  /* TX=GPIO2 RX=GPIO4 */
+    uart_driver_install(UART_NUM_2, 1024, 1024, 0, NULL, 0);
+    ESP_LOGI(TAG, "UART2 ready (TX=GPIO2 RX=GPIO4) - sending...");
+
+    for (uint8_t i = 0; i < 50; i++) {
+        uart_write_bytes(UART_NUM_2, (const char *)&i, 1);
+        ESP_LOGI(TAG, "Sent: 0x%02X", i);
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+    ESP_LOGI(TAG, "UART2 TX test done");
+}
+#endif

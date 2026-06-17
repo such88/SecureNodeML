@@ -1,9 +1,10 @@
 /*
- * ota_receiver.c — Receive OTA model from ESP32 over USART1
+ * ota_receiver.c — Receive OTA model from ESP32 over USART1 (interrupt-driven)
  */
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/uart.h>
+#include <zephyr/sys/ring_buffer.h>
 #include <zephyr/sys/crc.h>
 #include <string.h>
 #include "ota_protocol.h"
@@ -12,68 +13,106 @@
 
 LOG_MODULE_REGISTER(ota_rx, LOG_LEVEL_INF);
 
-static const struct device *uart1 = DEVICE_DT_GET(DT_NODELABEL(usart1));
-//RAM OVERFLOW(128KB) — allocate as static global to avoid stack overflow in inference thread
-//static uint8_t s_model_buf[OTA_MAX_MODEL_SIZE]; 
-static uint8_t s_model_buf[8192];  /* 8KB — enough for our 4104 byte model */
+RING_BUF_DECLARE(rx_ringbuf, 8192);
 
-static int uart_read_exact(const struct device *dev,
-                            uint8_t *buf, size_t len, uint32_t timeout_ms)
+static void uart_cb(const struct device *dev, void *user_data)
+{
+    uint8_t byte;
+    while (uart_irq_update(dev) && uart_irq_rx_ready(dev)) {
+        while (uart_fifo_read(dev, &byte, 1) == 1) {
+            ring_buf_put(&rx_ringbuf, &byte, 1);
+        }
+    }
+}
+
+static int ring_read_exact(uint8_t *buf, size_t len, uint32_t timeout_ms)
 {
     size_t received = 0;
     uint32_t start = k_uptime_get_32();
 
     while (received < len) {
-        uint8_t c;
-        if (uart_poll_in(dev, &c) == 0) {
-            buf[received++] = c;
-        } else {
+        uint32_t got = ring_buf_get(&rx_ringbuf, buf + received, len - received);
+        received += got;
+        if (received < len) {
             if ((k_uptime_get_32() - start) > timeout_ms) {
-                LOG_ERR("UART read timeout at %u/%u bytes",
+                LOG_ERR("Ring read timeout at %u/%u bytes",
                         (unsigned)received, (unsigned)len);
                 return -ETIMEDOUT;
             }
-            k_usleep(100);
+            k_msleep(1);
         }
     }
     return 0;
 }
 
+const struct device *uart1_dev;
+
+void uart_ota_irq_enable(void)
+{
+    uart1_dev = DEVICE_DT_GET(DT_NODELABEL(usart1));
+    if (!device_is_ready(uart1_dev)) {
+        return;
+    }
+    ring_buf_reset(&rx_ringbuf);
+    uart_irq_callback_set(uart1_dev, uart_cb);
+    uart_irq_rx_enable(uart1_dev);
+}
+
+static uint8_t s_model_buf[8192];
+
 int ota_receive_and_apply(void)
 {
-    if (!device_is_ready(uart1)) {
+    if (!device_is_ready(uart1_dev)) {
         LOG_ERR("USART1 not ready");
         return -ENODEV;
     }
 
-    LOG_INF("Waiting for OTA frame on USART1...");
+    //uart_irq_rx_enable(uart1_dev);
+    LOG_INF("Waiting for OTA frame...");
 
-    /* Step 1: Read header */
+    /* Scan for start-of-frame marker 0xAA (preceded by 0x55 training bytes) */
+    uint8_t b = 0;
+    uint32_t t0 = k_uptime_get_32();
+    while (b != 0xAA) {
+        if (k_uptime_get_32() - t0 > 30000) {
+            uart_irq_rx_disable(uart1_dev);
+            return -ETIMEDOUT;
+        }
+        ring_read_exact(&b, 1, 30000);
+    }
+    LOG_INF("Frame start detected");
+
+    /* No sync byte needed — IRQ was enabled at boot */
     ota_frame_header_t hdr;
-    if (uart_read_exact(uart1, (uint8_t *)&hdr, sizeof(hdr), 30000) != 0) {
+    if (ring_read_exact((uint8_t *)&hdr, sizeof(hdr), 30000) != 0) {
         return -ETIMEDOUT;
     }
-
+    
     if (hdr.magic != OTA_MAGIC) {
         LOG_ERR("Bad magic: 0x%08X", hdr.magic);
+        uart_irq_rx_disable(uart1_dev);
         return -EINVAL;
     }
-    if (hdr.length == 0 || hdr.length > OTA_MAX_MODEL_SIZE) {
+    if (hdr.length == 0 || hdr.length > sizeof(s_model_buf)) {
         LOG_ERR("Bad length: %u", hdr.length);
+        uart_irq_rx_disable(uart1_dev);
         return -EINVAL;
     }
     LOG_INF("OTA header: v%u len=%u", hdr.version, hdr.length);
 
-    /* Step 2: Read payload */
-    if (uart_read_exact(uart1, s_model_buf, hdr.length, 10000) != 0) {
+    if (ring_read_exact(s_model_buf, hdr.length, 10000) != 0) {
+        uart_irq_rx_disable(uart1_dev);
         return -ETIMEDOUT;
     }
 
-    /* Step 3: Read + verify CRC32 */
     uint32_t recv_crc;
-    if (uart_read_exact(uart1, (uint8_t *)&recv_crc, 4, 1000) != 0) {
+    if (ring_read_exact((uint8_t *)&recv_crc, 4, 1000) != 0) {
+        uart_irq_rx_disable(uart1_dev);
         return -ETIMEDOUT;
     }
+
+    uart_irq_rx_disable(uart1_dev);
+
     uint32_t calc_crc = crc32_ieee(s_model_buf, hdr.length);
     if (calc_crc != recv_crc) {
         LOG_ERR("CRC32 mismatch: got 0x%08X expected 0x%08X",
@@ -82,11 +121,6 @@ int ota_receive_and_apply(void)
     }
     LOG_INF("CRC32 OK");
 
-    /* Step 4: ECDSA verify (independent of gateway) */
-    /* TODO Day 22: signature delivered separately — skip for now */
-    LOG_INF("ECDSA verify: TODO Day 22");
-
-    /* Step 5: Version check */
     int ret = version_check_and_update(hdr.version);
     if (ret != 0) return ret;
 
