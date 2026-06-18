@@ -13,7 +13,7 @@
 
 LOG_MODULE_REGISTER(ota_rx, LOG_LEVEL_INF);
 
-RING_BUF_DECLARE(rx_ringbuf, 8192);
+RING_BUF_DECLARE(rx_ringbuf, 4096);
 
 static void uart_cb(const struct device *dev, void *user_data)
 {
@@ -58,7 +58,7 @@ void uart_ota_irq_enable(void)
     uart_irq_rx_enable(uart1_dev);
 }
 
-static uint8_t s_model_buf[8192];
+static uint8_t s_model_buf[5120];
 
 int ota_receive_and_apply(void)
 {

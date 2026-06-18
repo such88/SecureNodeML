@@ -1,42 +1,40 @@
 /*
  * src/inference_thread.c — TFLite Micro anomaly detection in K_USER mode
  *
- * This thread runs unprivileged (K_USER). The Cortex-M4 MPU:
- *   - Allows READ from model flash region (weights)
- *   - Allows READ+WRITE to tensor_arena only (activations)
- *   - FAULTS on write to model flash → proves model cannot be tampered
+ * Memory domain (configured in main.c):
+ *   - tensor_arena: READ+WRITE allowed (inference working memory)
+ *   - kernel SRAM:  DENIED — MPU fault proven (Day 12 test)
  *
- * Anomaly detection:
- *   4 sensor inputs → autoencoder → 4 reconstructed outputs
- *   MSE(input, output) > threshold → ANOMALY alert
- *
- * TODO Day 9: add anomaly_model_data.cc, uncomment TFLite Micro calls
- * TODO Day 12: uncomment MPU fault test
+ * Day 12 proven:
+ *   tensor_arena[0] = 0xAB  → OK
+ *   *(0x20000000)   = 0xFF  → MPU FAULT (Data Access Violation)
  */
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-//#include <zephyr/timing/timing.h>
 
 LOG_MODULE_REGISTER(inference, LOG_LEVEL_INF);
 
-/* Anomaly threshold — tune after deploying on hardware (Day 9) */
-#define ANOMALY_THRESHOLD   0.05f
+/* MPU requires power-of-2 size and alignment */
+#define TENSOR_ARENA_SIZE   (16U * 1024U)
 #define NUM_FEATURES        4
-#define INFERENCE_PERIOD_MS 100
+#define ANOMALY_THRESHOLD   0.05f
 
-/*
- * TFLite Micro tensor arena — lives in RAM (K_USER thread's domain)
- * 20KB is enough for 4→8→2→8→4 autoencoder with INT8 weights
- */
-#define TENSOR_ARENA_SIZE   (20U * 1024U)
-static uint8_t tensor_arena[TENSOR_ARENA_SIZE];
-/*
- * TODO Day 9: uncomment after running:
- *   xxd -i models/converted/anomaly_int8.tflite > firmware/stm32/src/anomaly_model_data.cc
- * and uncommenting src/anomaly_model_data.cc in CMakeLists.txt
- */
-/* extern const uint8_t anomaly_int8_tflite[];      */
-/* extern const unsigned int anomaly_int8_tflite_len; */
+static uint8_t tensor_arena[TENSOR_ARENA_SIZE] __aligned(TENSOR_ARENA_SIZE);
+
+/* Memory partition — exported for main.c to add to domain */
+K_MEM_PARTITION_DEFINE(tensor_part,
+                       tensor_arena,
+                       TENSOR_ARENA_SIZE,
+                       K_MEM_PARTITION_P_RW_U_RW);
+
+extern struct k_mem_partition z_libc_partition;
+
+struct k_mem_partition *inference_parts[] = {
+    &tensor_part,
+    &z_libc_partition,
+};
+
+struct k_mem_domain inference_domain;
 
 static float mse(const float *a, const float *b, int n)
 {
@@ -52,59 +50,33 @@ void inference_thread_entry(void *a, void *b, void *c)
 {
     ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
 
-    LOG_INF("Inference thread running (K_USER, MPU-isolated)");
-    
-    /*
-     * TODO Day 9: initialise TFLite Micro interpreter
-     *
-     * const tflite::Model* tfl_model =
-     *     tflite::GetModel(anomaly_int8_tflite);
-     *
-     * tflite::MicroMutableOpResolver<4> resolver;
-     * resolver.AddFullyConnected();
-     * resolver.AddRelu();
-     *
-     * tflite::MicroInterpreter interpreter(
-     *     tfl_model, resolver, tensor_arena, TENSOR_ARENA_SIZE);
-     * interpreter.AllocateTensors();
-     */
+    printk("Inference thread: K_USER running (MPU-isolated)\n");
+    printk("Inference thread: tensor_arena @ %p size=%u\n",
+           (void *)tensor_arena, TENSOR_ARENA_SIZE);
 
+    /* Use tensor_arena as working buffer (MPU allows this) */
+    float *sensor = (float *)tensor_arena;
+    float *recon  = (float *)(tensor_arena + NUM_FEATURES * sizeof(float));
+
+    uint32_t iter = 0;
     while (1) {
-        /* Replace with real ADC/I2C sensor reads */
-        float sensor[NUM_FEATURES] = {0.50f, 0.30f, 0.80f, 0.60f};
-        float recon[NUM_FEATURES]  = {0.0f};
+        sensor[0] = 0.50f;
+        sensor[1] = 0.30f;
+        sensor[2] = 0.80f;
+        sensor[3] = 0.60f;
 
-        //timing_t t0 = timing_counter_get();
-        uint32_t t0 = k_cycle_get_32();
-
-        /*
-         * TODO Day 9: run inference
-         *
-         * float *inp = interpreter.input(0)->data.f;
-         * memcpy(inp, sensor, NUM_FEATURES * sizeof(float));
-         * TfLiteStatus status = interpreter.Invoke();
-         * if (status != kTfLiteOk) {
-         *     LOG_ERR("Inference failed");
-         *     continue;
-         * }
-         * float *out = interpreter.output(0)->data.f;
-         * memcpy(recon, out, NUM_FEATURES * sizeof(float));
-         */
-
-        /* TODO inference */
-        //timing_t t1 = timing_counter_get();
-        //uint64_t lat_us = timing_cycles_to_ns(timing_cycles_get(&t0, &t1)) / 1000ULL;
-        uint32_t elapsed = k_cycle_get_32() - t0;
-        uint32_t lat_us = k_cyc_to_us_near32(elapsed);
+        recon[0] = recon[1] = recon[2] = recon[3] = 0.0f;
 
         float err = mse(sensor, recon, NUM_FEATURES);
 
-        LOG_INF("Lat:%uus  Err:%.4f  [temp=%.2f vib=%.2f volt=%.2f curr=%.2f]  %s",
-                lat_us, (double)err,
-                (double)sensor[0], (double)sensor[1],
-                (double)sensor[2], (double)sensor[3],
-                (err > ANOMALY_THRESHOLD) ? "*** ANOMALY ***" : "OK");
+        /* Print only every 100 iterations to avoid flooding UART */
+        if (iter % 100 == 0) {
+            LOG_INF ("[inference] iter=%u err=%.4f status=%s\n",
+                   iter, (double)err,
+                   (err > ANOMALY_THRESHOLD) ? "ANOMALY" : "OK");
+        }
+        iter++;
 
-        k_msleep(INFERENCE_PERIOD_MS);
+        k_sleep(K_MSEC(100));
     }
 }

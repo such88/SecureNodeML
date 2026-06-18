@@ -90,7 +90,7 @@ int main(void)
     extern const struct device *uart1_dev;
     extern void uart_ota_irq_enable(void);
     uart_ota_irq_enable();
-    
+
     /* ── Step 2: Anti-rollback version check ───────────────────── */
     extern int version_check_and_update(uint32_t incoming);
     extern uint32_t version_get_current(void);
@@ -123,15 +123,24 @@ int main(void)
      * if (version_check_and_update(incoming_ver) != 0) { k_panic(); }
      */
 
+    /* Set up memory domain for K_USER inference thread */
+    LOG_INF("Setting up inference memory domain...");
+    extern struct k_mem_domain inference_domain;
+    extern struct k_mem_partition *inference_parts[];
+
     /* ── Step 3: Launch inference thread in unprivileged mode ────────── */
     k_thread_create(&inference_thread_data,
                     inference_stack,
                     K_THREAD_STACK_SIZEOF(inference_stack),
                     inference_thread_entry,
                     NULL, NULL, NULL,
-                    K_PRIO_PREEMPT(5),
+                    K_PRIO_PREEMPT(10),
                     K_USER,
-                    K_NO_WAIT);
+                    K_MSEC(5000));
+    int dom_ret = k_mem_domain_init(&inference_domain, 2, inference_parts);
+    LOG_INF("Domain init: %d", dom_ret);
+    k_mem_domain_add_thread(&inference_domain, &inference_thread_data);
+    LOG_INF("Thread added to domain");
     k_thread_name_set(&inference_thread_data, "inference");
     LOG_INF("Inference thread started");
     

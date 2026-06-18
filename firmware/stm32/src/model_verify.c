@@ -55,6 +55,7 @@ int model_verify(const uint8_t *model, size_t model_len,
         goto cleanup;
     }
 
+    LOG_INF("SHA-256 OK");
     /* Load P-256 curve */
     ret = mbedtls_ecp_group_load(&ctx.MBEDTLS_PRIVATE(grp),
                                   MBEDTLS_ECP_DP_SECP256R1);
@@ -62,6 +63,7 @@ int model_verify(const uint8_t *model, size_t model_len,
         LOG_ERR("ECP group load failed: -0x%04X", -ret);
         goto cleanup;
     }
+    LOG_INF("ECP group load OK");
 
     /* Load public key X */
     ret = mbedtls_mpi_read_binary(
@@ -71,7 +73,7 @@ int model_verify(const uint8_t *model, size_t model_len,
         LOG_ERR("Key X load failed: -0x%04X", -ret);
         goto cleanup;
     }
-
+    LOG_INF("Key X load OK");
     /* Load public key Y */
     ret = mbedtls_mpi_read_binary(
         &ctx.MBEDTLS_PRIVATE(Q).MBEDTLS_PRIVATE(Y),
@@ -80,11 +82,12 @@ int model_verify(const uint8_t *model, size_t model_len,
         LOG_ERR("Key Y load failed: -0x%04X", -ret);
         goto cleanup;
     }
-
+    LOG_INF("Key Y load OK");
     /* Z=1 for affine coordinates */
     ret = mbedtls_mpi_lset(
         &ctx.MBEDTLS_PRIVATE(Q).MBEDTLS_PRIVATE(Z), 1);
     if (ret != 0) goto cleanup;
+    LOG_INF("Key Z load OK");
 
     /* Copy signature to aligned RAM buffer before verify */
     static uint8_t sig_buf[72] __attribute__((aligned(4)));
