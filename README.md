@@ -127,4 +127,3 @@ idf.py -p /dev/ttyUSB0 flash monitor
 | 19–20 | ESP32 WiFi + HTTP fetch + ECDSA verify | done |
 | 21–22 | UART OTA delivery — 4104 bytes, CRC32 OK, anti-rollback enforced | done |
 | 23–24 | Docs finalized | done |
-| 25–30 | Resume, LinkedIn, Apply | in progress |
